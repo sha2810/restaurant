@@ -16,6 +16,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
 
   <style>
     :root{
@@ -35,6 +36,12 @@
     .nav-menu li:hover{background:var(--primary-gold);color:var(--dark-brown)}
     .right{display:flex;align-items:center;gap:12px}
     .btn{border:1px solid #ffffff3a;background:transparent;color:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
+    /* Add this to your style block */
+.card .btn, .modal .btn {
+  background: #f1f5f9; /* A light gray background */
+  border-color: #e2e8f0;
+  color: var(--text); /* Set text color to be visible */
+}
     .btn.primary{background:var(--primary-gold);border-color:var(--primary-gold);color:#151515}
     .cart-pill{position:relative;cursor:pointer}
     .cart-pill .count{position:absolute;top:-6px;right:-8px;background:#ff4757;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px}
@@ -498,6 +505,56 @@ document.addEventListener("click", () => {
       toast('Profile updated','success');
       qs('#profileName').textContent = name || 'User';
     }
+    const messaging = firebase.messaging();
+
+// Request permission to receive notifications
+async function requestNotificationPermission() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      console.log('Notification permission granted.');
+      
+      // Get the service worker registration
+      const registration = await navigator.serviceWorker.getRegistration();
+
+      if (registration) {
+        // Get the FCM token, explicitly passing the service worker registration
+        const token = await messaging.getToken({ serviceWorkerRegistration: registration });
+        console.log('FCM token:', token);
+        
+        // Save this token to the user's document in Firestore
+        if (currentUser) {
+          await db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
+        }
+      } else {
+        console.error('No active service worker found.');
+        toast('Failed to get notification token: no service worker','error');
+      }
+
+    } else {
+      console.log('Notification permission denied.');
+    }
+  } catch (err) {
+    console.error('Unable to get permission to notify.', err);
+    toast('Error getting permission','error');
+  }
+}
+
+// Call this function when the user is logged in
+auth.onAuthStateChanged((user) => {
+  // ... existing code ...
+  if (user) {
+    // ... existing code ...
+    requestNotificationPermission();
+  }
+});
+
+// Handle messages when the app is in the foreground
+messaging.onMessage((payload) => {
+  console.log('Message received. ', payload);
+  // Display a toast or a custom UI message
+  toast(payload.notification.title, 'info');
+});
 
     /*****************
      * Menu (Firestore)
@@ -662,6 +719,7 @@ document.addEventListener("click", () => {
         </div>
       `).join('');
     }
+    
 
     // Admin: export CSV
     async function exportOrders(){
