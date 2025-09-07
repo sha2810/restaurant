@@ -377,6 +377,14 @@
     const db   = firebase.firestore();
     const storage = firebase.storage();
 
+    // Manually register the service worker for FCM
+navigator.serviceWorker.register('/firebase-messaging-sw.js')
+  .then((registration) => {
+    console.log('Service Worker registered with scope:', registration.scope);
+  }).catch((err) => {
+    console.log('Service Worker registration failed:', err);
+  });
+
     
 
     /*****************
@@ -505,32 +513,35 @@ document.addEventListener("click", () => {
       toast('Profile updated','success');
       qs('#profileName').textContent = name || 'User';
     }
-    const messaging = firebase.messaging();
 
 // Request permission to receive notifications
+const messaging = firebase.messaging();
+
 async function requestNotificationPermission() {
   try {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       console.log('Notification permission granted.');
-      
-      // Get the service worker registration
-      const registration = await navigator.serviceWorker.getRegistration();
 
-      if (registration) {
-        // Get the FCM token, explicitly passing the service worker registration
-        const token = await messaging.getToken({ serviceWorkerRegistration: registration });
-        console.log('FCM token:', token);
-        
-        // Save this token to the user's document in Firestore
-        if (currentUser) {
-          await db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
+      // Wait for service worker registration before getting the token
+      navigator.serviceWorker.getRegistration().then((registration) => {
+        if (registration) {
+          // Get the FCM token, explicitly passing the service worker registration
+          messaging.getToken({ serviceWorkerRegistration: registration }).then((token) => {
+            console.log('FCM token:', token);
+            // Save this token to the user's document in Firestore
+            if (currentUser) {
+              db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
+            }
+          }).catch((err) => {
+            console.error('Failed to get FCM token:', err);
+            toast('Failed to get notification token','error');
+          });
+        } else {
+          console.error('No active service worker found.');
+          toast('Failed to get notification token: no service worker','error');
         }
-      } else {
-        console.error('No active service worker found.');
-        toast('Failed to get notification token: no service worker','error');
-      }
-
+      });
     } else {
       console.log('Notification permission denied.');
     }
@@ -540,13 +551,14 @@ async function requestNotificationPermission() {
   }
 }
 
-// Call this function when the user is logged in
+// Call this function when the user logs in
 auth.onAuthStateChanged((user) => {
-  // ... existing code ...
+  currentUser = user || null;
   if (user) {
-    // ... existing code ...
-    requestNotificationPermission();
+    // ... your existing code for logged-in user ...
+    requestNotificationPermission(); // Now this function will wait for the service worker
   }
+  // ... rest of the auth handler
 });
 
 // Handle messages when the app is in the foreground
