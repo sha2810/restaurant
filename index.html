@@ -693,9 +693,22 @@ document.addEventListener("click", () => {
       if(id==='tab-menu') loadMenu();
     }
 
-    function canAdmin(){
-      return currentUser? db.collection('users').doc(currentUser.uid).get().then(s=>s.exists && s.data().role==='admin') : Promise.resolve(false);
-    }
+async function canAdmin(){
+  try {
+    const user = auth.currentUser;
+    if (!user) return false;
+
+    // Get the user's document
+    const doc = await db.collection('users').doc(user.uid).get();
+    
+    // Return true if the role is 'admin', otherwise false
+    return doc.exists && doc.data().role === "admin";
+  } catch (e) {
+    console.error("Error checking admin status:", e);
+    return false;
+  }
+}
+
 
     // MENU CRUD
     async function submitMenu(e){
@@ -813,27 +826,39 @@ document.addEventListener("click", () => {
 }
 
     // ADMIN ORDERS
-    async function loadAdminOrders(){
-      if(!await canAdmin()) return;
-      const snap = await db.collection('orders').orderBy('createdAt','desc').get();
-      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
-      const box = qs('#adminOrderList'); box.innerHTML='';
-      list.forEach(o=>{
-        const el=document.createElement('div'); el.className='card';
-        el.innerHTML = `
-          <div class="row"><strong>#${o.id.slice(-6)}</strong><span class="badge ${o.status}">${o.status}</span></div>
-          <div class="muted">${o.items.map(i=>`${i.name} × ${i.qty}`).join(', ')}</div>
-          <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
-          <div class="row">
-            <select id="st-${o.id}">
-              ${['pending','confirmed','preparing','ready','delivered'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
-            </select>
-            <button class="btn" onclick="updateOrderStatus('${o.id}')">Update</button>
-          </div>
-        `;
-        box.appendChild(el);
-      });
-    }
+async function loadAdminOrders(){
+  // Await the canAdmin() call
+  if(!await canAdmin()) {
+    qs('#adminOrderList').innerHTML = '<div class="muted">You do not have admin access to view orders.</div>';
+    return;
+  }
+
+  // The rest of your code to render orders
+  const snap = await db.collection('orders').orderBy('createdAt','desc').get();
+  let orders = snap.docs.map(d=>({...d.data(),id:d.id}));
+  if(orders.length===0){
+    qs('#adminOrderList').innerHTML = '<div class="muted">No orders yet!</div>';
+    return;
+  }
+  let box = qs('#adminOrderList');
+  box.innerHTML = '';
+  orders.forEach(o=>{
+    let el = document.createElement('div');
+    el.className = 'order-card';
+    el.innerHTML = `
+      <div class="row"><span>Order #...</span><strong>#${o.id.slice(-6)}</strong><span class="badge ${o.status}">${o.status}</span></div>
+      <div class="muted">${o.items.map(i=>`${i.name} × ${i.qty}`).join(', ')}</div>
+      <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
+      <div class="row">
+        <select id="st-${o.id}">
+          ${['pending','confirmed','preparing','ready','delivered'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <button class="btn" onclick="updateOrderStatus('${o.id}')">Update</button>
+      </div>
+    `;
+    box.appendChild(el);
+  });
+}
     async function updateOrderStatus(id){
       const v = qs('#st-'+id).value;
       await db.collection('orders').doc(id).set({status:v},{merge:true});
