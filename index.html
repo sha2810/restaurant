@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Oasis Restaurant • Firebase + Responsive UI</title>
+
+  <!-- Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet"/>
+
+  <!-- Firebase (Compat for easy inline use) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+  <style>
+    :root{
+      --primary-gold:#D4AF37;--secondary-gold:#B8860B;--dark-brown:#2C1810;--cream:#FAF6F0;
+      --spice-red:#DC143C;--green:#228B22;--text:#2b2b2b;--light:#ffffff;--muted:#6b7280;--border:#e5e7eb;
+      --shadow:0 12px 30px rgba(0,0,0,.08)
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:linear-gradient(135deg,var(--cream),#f5f1ea);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;color:var(--text)}
+    /* Header */
+    header{position:sticky;top:0;z-index:50;background:linear-gradient(135deg,var(--dark-brown),#3C241A);color:#fff;box-shadow:var(--shadow)}
+    .nav{max-width:1200px;margin:auto;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;gap:12px}
+    .brand{display:flex;align-items:center;gap:10px;color:var(--primary-gold);font-weight:700;font-size:20px}
+    .brand i{font-size:24px}
+    .nav-menu{display:flex;gap:10px;list-style:none;margin:0;padding:0}
+    .nav-menu li{padding:8px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
+    .nav-menu li:hover{background:var(--primary-gold);color:var(--dark-brown)}
+    .right{display:flex;align-items:center;gap:12px}
+    .btn{border:1px solid #ffffff3a;background:transparent;color:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn.primary{background:var(--primary-gold);border-color:var(--primary-gold);color:#151515}
+    .cart-pill{position:relative;cursor:pointer}
+    .cart-pill .count{position:absolute;top:-6px;right:-8px;background:#ff4757;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px}
+    .profile{position:relative;display:none;align-items:center;gap:8px}
+    .profile .menu{position:absolute;right:0;top:150%;background:#fff;color:#111;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);display:none;min-width:160px;overflow:hidden;z-index:2000;}
+    .profile .menu a{display:block;padding:10px 12px;text-decoration:none;color:inherit}
+    .profile .menu a:hover{background:#f7f7f7}
+
+    /* Hero */
+    .hero{min-height:44vh;display:grid;place-items:center;background:radial-gradient(60% 80% at 70% 0%, #ffffffaa, transparent),url('https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=1200&auto=format&fit=crop') center/cover}
+    .hero .card{backdrop-filter:blur(6px);background:#ffffffd9;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:28px;text-align:center;max-width:680px;margin:24px}
+    .cta{background:var(--primary-gold);border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer}
+
+    /* Layout */
+    .wrap{max-width:1200px;margin:auto;padding:18px}
+    .section{margin:28px 0}
+    .title{font-weight:800;margin:4px 0 14px}
+    .grid{display:grid;gap:16px}
+    @media(min-width:900px){.grid.cols-2{grid-template-columns:1fr 1fr}}
+    @media(min-width:1100px){.grid.cols-3{grid-template-columns:repeat(3,1fr)}}
+    .card{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+
+    /* Menu */
+    .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .chip{border:1px solid var(--border);background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer}
+    .chip.active,.chip:hover{background:#111;color:#fff;border-color:#111}
+    .menu-grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:12px}
+    @media(min-width:640px){.menu-grid{grid-template-columns:repeat(2,1fr)}}
+    @media(min-width:1024px){.menu-grid{grid-template-columns:repeat(3,1fr)}}
+    .food{display:flex;gap:12px}
+    .food .img{width:88px;height:88px;border-radius:12px;background:#f5f5f5;display:grid;place-items:center;font-size:32px}
+    .food .meta{flex:1}
+    .qty{display:flex;align-items:center;gap:8px}
+    .qty button{padding:6px 10px;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer}
+
+    /* Cart */
+    .cart-footer{display:grid;gap:8px}
+    .row{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
+    .muted{color:var(--muted)}
+    .full{width:100%}
+
+    /* Orders timeline (compact) */
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border)}
+    .badge.pending{background:#fff8e1}
+    .badge.confirmed{background:#e3f2fd}
+    .badge.preparing{background:#e8f5e9}
+    .badge.ready{background:#ede7f6}
+    .badge.delivered{background:#e8f5e9;border-color:#a7f3d0}
+
+    /* Admin */
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+    .tab{padding:10px 12px;border-radius:10px;border:1px solid var(--border);cursor:pointer}
+    .tab.active,.tab:hover{background:#111;color:#fff;border-color:#111}
+    .admin-grid{display:grid;gap:12px}
+    @media(min-width:1000px){.admin-grid{grid-template-columns:1fr 1fr}}
+
+    /* Mobile nav */
+    .burger{display:none}
+    @media(max-width:820px){
+      .nav-menu{display:none}
+      .burger{display:block;cursor:pointer}
+      .drawer{position:fixed;left:0;top:0;height:100vh;width:80vw;max-width:360px;background:#1f2937;color:#fff;transform:translateX(-100%);transition:transform .25s ease;border-right:1px solid #ffffff1a;z-index:60;padding:14px}
+      .drawer.open{transform:translateX(0)}
+      .drawer a{display:block;color:#fff;text-decoration:none;padding:12px 4px;border-radius:8px}
+      .drawer a:hover{background:#ffffff1a}
+    }
+
+    /* Modals */
+    .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.35);z-index:70}
+    .modal .card{max-width:420px;width:92%}
+    .x{cursor:pointer}
+    input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
+    label{font-size:13px;color:#475569}
+  </style>
+</head>
+<body>
+  <!-- Drawer (mobile) -->
+  <div id="drawer" class="drawer">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div class="brand"><i class="fa-solid fa-utensils"></i> Oasis</div>
+      <button class="btn" onclick="toggleDrawer()">Close</button>
+    </div>
+    <a href="#" onclick="navTo('home')">Home</a>
+    <a href="#" onclick="navTo('menu')">Menu</a>
+    <a href="#" onclick="navTo('cart')">Cart</a>
+    <a href="#" onclick="navTo('orders')">Orders</a>
+    <a href="#" onclick="navTo('profile')">Profile</a>
+    <a id="adminLinkDrawer" href="#" style="display:none" onclick="navTo('admin')">Admin</a>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="nav">
+      <div class="brand"><i class="fa-solid fa-utensils"></i> Oasis Restaurant</div>
+
+      <ul class="nav-menu" id="topNav">
+        <li onclick="navTo('home')">Home</li>
+        <li onclick="navTo('menu')">Menu</li>
+        <li onclick="navTo('cart')">Cart</li>
+        <li onclick="navTo('orders')">Orders</li>
+        <li onclick="navTo('profile')">Profile</li>
+        <li id="adminLink" style="display:none" onclick="navTo('admin')">Admin</li>
+      </ul>
+
+      <div class="right">
+        <div class="burger" onclick="toggleDrawer()"><i class="fa-solid fa-bars"></i></div>
+        <div class="cart-pill" onclick="navTo('cart')"><i class="fa-solid fa-cart-shopping"></i><span id="cartCount" class="count">0</span></div>
+
+        <div id="authBtns">
+          <button class="btn" onclick="openModal('loginModal')">Login</button>
+          <button class="btn primary" onclick="openModal('registerModal')">Register</button>
+        </div>
+
+        <div id="profileBox" class="profile">
+          <span id="profileName">User</span>
+          <i class="fa-solid fa-user" onclick="toggleProfileMenu(event)"></i>
+          <div class="menu" id="profileMenu">
+            <a href="#" onclick="navTo('profile')">My Profile</a>
+            <a href="#" onclick="doLogout()">Logout</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section id="home" class="hero">
+    <div class="card">
+      <h1 style="margin:0 0 8px">Welcome to Oasis</h1>
+      <p class="muted" style="margin:0 0 14px">Authentic Indian cuisine delivered fresh to your door.</p>
+      <button class="cta" onclick="navTo('menu')"><i class="fa-solid fa-utensils"></i> Order Now</button>
+    </div>
+  </section>
+
+  <main class="wrap">
+    <!-- MENU -->
+    <section id="menu" class="section" hidden>
+      <h2 class="title">Our Menu</h2>
+
+      <div class="filters">
+        <button class="chip active" data-cat="all" onclick="filterMenu('all', this)">All</button>
+        <button class="chip" data-cat="biryani" onclick="filterMenu('biryani', this)">Biryani</button>
+        <button class="chip" data-cat="curry" onclick="filterMenu('curry', this)">Curries</button>
+        <button class="chip" data-cat="bread" onclick="filterMenu('bread', this)">Breads</button>
+        <button class="chip" data-cat="appetizers" onclick="filterMenu('appetizers', this)">Appetizers</button>
+        <button class="chip" data-cat="desserts" onclick="filterMenu('desserts', this)">Desserts</button>
+        <button class="chip" data-cat="beverages" onclick="filterMenu('beverages', this)">Beverages</button>
+      </div>
+
+      <div id="menuGrid" class="menu-grid"></div>
+    </section>
+
+    <!-- CART -->
+    <section id="cart" class="section" hidden>
+      <h2 class="title">Your Cart</h2>
+      <div class="grid cols-2">
+        <div class="card">
+          <div id="cartItems"></div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Summary</h3>
+          <div class="row"><span>Subtotal</span><strong id="subtotal">₹0</strong></div>
+          <div class="row"><span>Delivery</span><span id="deliveryFee" class="muted">₹0</span></div>
+          <div class="row"><span>Discount</span><span id="discountAmt" class="muted">₹0</span></div>
+          <div class="row" style="border-top:1px dashed var(--border);padding-top:8px"><span>Total</span><strong id="grandTotal">₹0</strong></div>
+
+          <div class="row">
+            <input id="couponCode" placeholder="Coupon code" />
+            <button class="btn" onclick="applyCoupon()">Apply</button>
+          </div>
+
+          <div class="cart-footer">
+            <select id="orderType">
+              <option value="delivery">Delivery</option>
+              <option value="pickup">Pickup</option>
+              <option value="dinein">Dine-in</option>
+            </select>
+            <select id="paymentMethod">
+              <option value="cod">Cash on Delivery</option>
+              <option value="card">Credit/Debit Card</option>
+              <option value="upi">UPI</option>
+              <option value="netbanking">Net Banking</option>
+            </select>
+            <button class="cta full" onclick="placeOrder()">Place Order</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ORDERS -->
+    <section id="orders" class="section" hidden>
+      <h2 class="title">Your Orders</h2>
+      <div id="ordersList" class="grid"></div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="profile" class="section" hidden>
+      <h2 class="title">Your Profile</h2>
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="row"><label>Full Name</label></div>
+          <input id="profileFullName" placeholder="Full name" />
+          <div class="row"><label>Phone</label></div>
+          <input id="profilePhone" placeholder="Phone" />
+          <div class="row"><label>Email</label></div>
+          <input id="profileEmail" placeholder="Email" disabled />
+          <button class="cta full" style="margin-top:10px" onclick="saveProfile()">Update Profile</button>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0">Loyalty</h3>
+          <div id="loyaltyPoints" style="font-size:32px;font-weight:800">0</div>
+          <p class="muted">Earn 1 point for every ₹10 spent.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="admin" class="section" hidden>
+      <h2 class="title">Admin Panel</h2>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="tab-menu" onclick="switchTab(this)">Menu</div>
+        <div class="tab" data-tab="tab-coupons" onclick="switchTab(this)">Coupons</div>
+        <div class="tab" data-tab="tab-orders" onclick="switchTab(this)">Orders</div>
+      </div>
+
+      <div id="tab-menu" class="admin-grid">
+        <div class="card">
+          <h3 style="margin-top:0" id="menuFormTitle">Add New Menu Item</h3>
+          <form id="menuForm" onsubmit="return submitMenu(event)">
+            <input type="hidden" id="menuEditId" />
+            <label>Name</label><input id="mName" required />
+            <label>Price (₹)</label><input id="mPrice" type="number" min="0" step="1" required />
+            <label>Category</label>
+            <select id="mCategory">
+              <option>biryani</option><option>curry</option><option>bread</option>
+              <option>appetizers</option><option>desserts</option><option>beverages</option>
+            </select>
+            <label>Description</label><textarea id="mDesc" rows="2"></textarea>
+            <label>Emoji / Image (emoji or URL)</label><input id="mImage" placeholder="🍛 or https://..." />
+            <label>In Stock</label>
+            <select id="mInStock"><option value="true">Yes</option><option value="false">No</option></select>
+            <button class="cta full" style="margin-top:10px" type="submit">Save</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin-top:0">Menu Items</h3>
+            <button class="btn" onclick="loadMenu()">Refresh</button>
+          </div>
+          <div id="adminMenuList" class="grid"></div>
+        </div>
+      </div>
+
+      <div id="tab-coupons" class="admin-grid" hidden>
+        <div class="card">
+          <h3 style="margin-top:0">Add / Edit Coupon</h3>
+          <form id="couponForm" onsubmit="return submitCoupon(event)">
+            <input type="hidden" id="couponEditId" />
+            <label>Code</label><input id="cCode" placeholder="SAVE10" required />
+            <label>Discount Type</label>
+            <select id="cType"><option value="percentage">Percentage</option><option value="flat">Flat</option></select>
+            <label>Discount Value</label><input id="cValue" type="number" min="0" step="1" required />
+            <label>Min Order Value (₹)</label><input id="cMin" type="number" min="0" step="1" value="0" />
+            <label>Valid Until</label><input id="cUntil" type="date" />
+            <label>Active</label>
+            <select id="cActive"><option value="true">Yes</option><option value="false">No</option></select>
+            <button class="cta full" style="margin-top:10px" type="submit">Save</button>
+          </form>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin-top:0">Coupons</h3>
+            <button class="btn" onclick="loadCoupons()">Refresh</button>
+          </div>
+          <div id="adminCouponList" class="grid"></div>
+        </div>
+      </div>
+
+      <div id="tab-orders" class="admin-grid" hidden>
+        <div class="card">
+          <h3 style="margin-top:0">Orders</h3>
+          <button class="btn" onclick="exportOrders()">Export CSV</button>
+          <div id="adminOrderList" class="grid" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal">
+    <div class="card">
+      <div class="row"><strong>Login</strong><span class="x" onclick="closeModal('loginModal')">✕</span></div>
+      <form onsubmit="return doLogin(event)">
+        <label>Email</label><input id="loginEmail" type="email" required />
+        <label>Password</label><input id="loginPassword" type="password" required />
+        <button class="cta full" type="submit">Login</button>
+        <p class="muted" style="margin-top:8px">No account? <a href="#" onclick="closeModal('loginModal');openModal('registerModal')">Register</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Register Modal -->
+  <div id="registerModal" class="modal">
+    <div class="card">
+      <div class="row"><strong>Create Account</strong><span class="x" onclick="closeModal('registerModal')">✕</span></div>
+      <form onsubmit="return doRegister(event)">
+        <label>Full Name</label><input id="regName" required />
+        <label>Phone</label><input id="regPhone" required />
+        <label>Email</label><input id="regEmail" type="email" required />
+        <label>Password</label><input id="regPassword" type="password" minlength="6" required />
+        <button class="cta full" type="submit">Register</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    /***************
+     * Firebase Init
+     ***************/
+    const firebaseConfig = {
+      apiKey: "AIzaSyA2oIAkYwBQeCkP88wJopoKC8ULgID043E",
+      authDomain: "restaurent-8bce8.firebaseapp.com",
+      projectId: "restaurent-8bce8",
+      storageBucket: "restaurent-8bce8.firebasestorage.app",
+      messagingSenderId: "210383076768",
+      appId: "1:210383076768:web:1ed82e9ec330b76beb78c5",
+      measurementId: "G-K69EFNCRG1"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    const storage = firebase.storage();
+
+    
+
+    /*****************
+     * App State
+     *****************/
+    let currentUser = null;
+    let menu = [];             // Firestore menu
+    let cart = [];             // Local cart
+    let coupons = [];          // Firestore coupons
+    let appliedCoupon = null;  // Applied coupon object
+    let loyaltyPoints = 0;
+
+     function toggleProfileMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById("profileMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+}
+
+// close menu if click outside
+document.addEventListener("click", () => {
+  const menu = document.getElementById("profileMenu");
+  if (menu) menu.style.display = "none";
+});
+
+
+
+
+    /*****************
+     * Utilities / UI
+     *****************/
+    function toast(msg, type="info"){
+      const el = document.createElement('div');
+      el.textContent = msg;
+      el.style.cssText = "position:fixed;right:16px;bottom:16px;background:#111;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:var(--shadow);z-index:80";
+      if(type==="error"){el.style.background="#ef4444"}
+      if(type==="success"){el.style.background="#16a34a"}
+      document.body.appendChild(el);
+      setTimeout(()=>el.remove(),1800);
+    }
+    const qs = s => document.querySelector(s);
+    function navTo(id){
+      document.querySelectorAll('section.section, .hero').forEach(s=>s.hidden=true);
+      if(id==='home'){qs('.hero').hidden=false}else{qs('#'+id).hidden=false}
+      if(window.innerWidth<=820){toggleDrawer(false)}
+      if(id==='menu'){loadMenu()} 
+      if(id==='orders'){loadMyOrders()}
+    }
+    function toggleDrawer(force){
+      const el=qs('#drawer');
+      el.classList[force===false?'remove':'toggle']('open');
+    }
+    function openModal(id){qs('#'+id).style.display='grid'}
+    function closeModal(id){qs('#'+id).style.display='none'}
+
+    /*****************
+     * Auth
+     *****************/
+    auth.onAuthStateChanged(async (user)=>{
+      currentUser = user || null;
+      if(user){
+        qs('#authBtns').style.display='none';
+        qs('#profileBox').style.display='flex';
+        qs('#profileName').textContent = user.displayName || 'User';
+        // ensure user doc exists
+        const uref = db.collection('users').doc(user.uid);
+        const snap = await uref.get();
+        if(!snap.exists){
+          await uref.set({ uid:user.uid, email:user.email, name:user.displayName||"", phone:"", role:"customer", createdAt:firebase.firestore.FieldValue.serverTimestamp(), points:0 });
+        }
+        const doc = (await uref.get()).data();
+        loyaltyPoints = Number(doc.points||0);
+        qs('#loyaltyPoints').textContent = loyaltyPoints;
+        qs('#profileFullName').value = doc.name || '';
+        qs('#profilePhone').value = doc.phone || '';
+        qs('#profileEmail').value = doc.email || user.email || '';
+        // admin link
+        const isAdmin = doc.role === 'admin';
+        qs('#adminLink').style.display = isAdmin ? '' : 'none';
+        qs('#adminLinkDrawer').style.display = isAdmin ? '' : 'none';
+      }else{
+        qs('#authBtns').style.display='';
+        qs('#profileBox').style.display='none';
+        qs('#adminLink').style.display='none';
+        qs('#adminLinkDrawer').style.display='none';
+      }
+      updateCartBadge();
+    });
+
+    async function doLogin(e){
+      e.preventDefault();
+      const email = qs('#loginEmail').value.trim();
+      const password = qs('#loginPassword').value;
+      try{
+        await auth.signInWithEmailAndPassword(email,password);
+        closeModal('loginModal'); toast('Logged in','success');
+      }catch(err){ toast(err.message,'error'); }
+      return false;
+    }
+    async function doRegister(e){
+      e.preventDefault();
+      const name = qs('#regName').value.trim();
+      const phone = qs('#regPhone').value.trim();
+      const email = qs('#regEmail').value.trim();
+      const password = qs('#regPassword').value;
+      try{
+        const cred = await auth.createUserWithEmailAndPassword(email,password);
+        await cred.user.updateProfile({displayName:name});
+        await db.collection('users').doc(cred.user.uid).set({
+          uid:cred.user.uid, email, name, phone, role:'customer',
+          createdAt:firebase.firestore.FieldValue.serverTimestamp(), points:0
+        });
+        closeModal('registerModal'); toast('Registered','success');
+      }catch(err){ toast(err.message,'error'); }
+      return false;
+    }
+    async function doLogout(){
+      await auth.signOut(); toast('Logged out');
+      navTo('home');
+    }
+    async function saveProfile(){
+      if(!currentUser) return toast('Please login','error');
+      const name = qs('#profileFullName').value.trim();
+      const phone = qs('#profilePhone').value.trim();
+      await currentUser.updateProfile({displayName:name});
+      await db.collection('users').doc(currentUser.uid).set({name,phone},{merge:true});
+      toast('Profile updated','success');
+      qs('#profileName').textContent = name || 'User';
+    }
+
+    /*****************
+     * Menu (Firestore)
+     *****************/
+    function renderMenu(items){
+      const grid = qs('#menuGrid');
+      grid.innerHTML = '';
+      items.forEach(it=>{
+        const card = document.createElement('div');
+        card.className='card food';
+        card.innerHTML = `
+          <div class="img">${/^(https?:)/.test(it.image||'')?`<img src="${it.image}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`:(it.image||'🍽️')}</div>
+          <div class="meta">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong>${it.name}</strong>
+              <span>₹${Number(it.price||0)}</span>
+            </div>
+            <div class="muted" style="margin:6px 0">${it.description||''}</div>
+            <div class="qty">
+              <button onclick="chgQty('${it.id}',-1)">–</button>
+              <span id="q-${it.id}">1</span>
+              <button onclick="chgQty('${it.id}',1)">+</button>
+              <button class="btn" style="margin-left:auto" ${it.inStock===false?'disabled':''} onclick="addToCart('${it.id}')">
+                <i class="fa-solid fa-plus"></i> Add
+              </button>
+            </div>
+          </div>`;
+        card.dataset.category = it.category||'';
+        card.dataset.id = it.id;
+        grid.appendChild(card);
+      });
+    }
+    async function loadMenu(){
+      const snap = await db.collection('menuItems').orderBy('createdAt','desc').get();
+      menu = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      renderMenu(menu);
+    }
+    function filterMenu(cat, el){
+      document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      if(el) el.classList.add('active');
+      document.querySelectorAll('#menuGrid .card').forEach(c=>{
+        c.style.display = (cat==='all' || c.dataset.category===cat)?'flex':'none';
+      });
+    }
+    function chgQty(id,delta){
+      const el = qs('#q-'+id);
+      const val = Math.max(1, (parseInt(el.textContent)||1)+delta);
+      el.textContent = val;
+    }
+
+    /*****************
+     * Cart (Local)
+     *****************/
+    function updateCartBadge(){
+      qs('#cartCount').textContent = cart.reduce((s,i)=>s+i.qty,0);
+    }
+    function renderCart(){
+      const box = qs('#cartItems');
+      if(cart.length===0){ box.innerHTML='<div class="muted">Your cart is empty.</div>'; }
+      else{
+        box.innerHTML = cart.map(it => `
+          <div class="row">
+            <div><strong>${it.name}</strong><div class="muted">₹${it.price} × ${it.qty}</div></div>
+            <div>
+              <button class="btn" onclick="decItem('${it.id}')">–</button>
+              <button class="btn" onclick="incItem('${it.id}')">+</button>
+              <button class="btn" onclick="removeItem('${it.id}')"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>
+        `).join('');
+      }
+      const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+      const delivery = qs('#orderType')?.value==='pickup'?0:(subtotal>500?0:40);
+      const discount = appliedCoupon? (appliedCoupon.discountType==='percentage'
+                        ? Math.floor(subtotal*(appliedCoupon.discountValue/100))
+                        : Math.min(appliedCoupon.discountValue, subtotal)) : 0;
+      const total = Math.max(0, subtotal + delivery - discount);
+      qs('#subtotal').textContent = '₹'+subtotal;
+      qs('#deliveryFee').textContent = '₹'+delivery;
+      qs('#discountAmt').textContent = '-₹'+discount;
+      qs('#grandTotal').textContent = '₹'+total;
+      updateCartBadge();
+    }
+    function addToCart(menuId){
+      const item = menu.find(m=>m.id===menuId);
+      if(!item) return;
+      const qty = parseInt(qs('#q-'+menuId)?.textContent || '1',10);
+      const ex = cart.find(c=>c.id===menuId);
+      if(ex){ ex.qty += qty; } else { cart.push({id:item.id,name:item.name,price:Number(item.price||0),qty}); }
+      toast(`${item.name} added to cart`,'success');
+      renderCart();
+    }
+    function incItem(id){ const it=cart.find(i=>i.id===id); if(it){it.qty++; renderCart();} }
+    function decItem(id){ const it=cart.find(i=>i.id===id); if(it){ it.qty=Math.max(1,it.qty-1); renderCart(); } }
+    function removeItem(id){ cart = cart.filter(i=>i.id!==id); renderCart(); }
+
+    /*****************
+     * Coupons
+     *****************/
+    async function loadCoupons(){
+      const snap = await db.collection('coupons').orderBy('createdAt','desc').get();
+      coupons = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      renderAdminCoupons();
+    }
+    function applyCoupon(){
+      const code = qs('#couponCode').value.trim().toUpperCase();
+      const found = coupons.find(c=>c.code===code && c.isActive!==false && (!c.validUntil || new Date(c.validUntil.toDate?c.validUntil.toDate():c.validUntil) >= new Date()));
+      if(!found){ appliedCoupon=null; renderCart(); return toast('Invalid or expired coupon','error'); }
+      appliedCoupon = found; renderCart(); toast('Coupon applied','success');
+    }
+
+    /*****************
+     * Orders
+     *****************/
+    async function placeOrder(){
+      if(cart.length===0) return toast('Your cart is empty','error');
+      if(!currentUser) return toast('Please login to place order','error');
+
+      const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+      const orderType = qs('#orderType').value;
+      const delivery = orderType==='pickup'?0:(subtotal>500?0:40);
+      const discount = appliedCoupon? (appliedCoupon.discountType==='percentage'
+                      ? Math.floor(subtotal*(appliedCoupon.discountValue/100))
+                      : Math.min(appliedCoupon.discountValue, subtotal)) : 0;
+      const total = Math.max(0, subtotal + delivery - discount);
+
+      const order = {
+        uid: currentUser.uid,
+        items: cart.map(i=>({id:i.id,name:i.name,price:i.price,qty:i.qty})),
+        orderType,
+        paymentMethod: qs('#paymentMethod').value,
+        coupon: appliedCoupon ? {id:appliedCoupon.id, code:appliedCoupon.code} : null,
+        subtotal, deliveryFee:delivery, discount, total,
+        status:'pending',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+
+      const ref = await db.collection('orders').add(order);
+      // loyalty: 1 point per ₹10
+      const points = Math.floor(total/10);
+      loyaltyPoints += points;
+      await db.collection('users').doc(currentUser.uid).set({points:loyaltyPoints},{merge:true});
+      qs('#loyaltyPoints').textContent = loyaltyPoints;
+
+      cart = []; appliedCoupon=null; renderCart(); updateCartBadge();
+      toast(`Order placed! #${ref.id.slice(-6)}`,'success');
+      navTo('orders'); loadMyOrders();
+    }
+
+    async function loadMyOrders(){
+      if(!currentUser){ qs('#ordersList').innerHTML='<div class="muted">Login to view your orders.</div>'; return; }
+      const snap = await db.collection('orders').where('uid','==',currentUser.uid).orderBy('createdAt','desc').get();
+      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
+      const box = qs('#ordersList');
+      if(list.length===0) return box.innerHTML='<div class="muted">No orders yet.</div>';
+      box.innerHTML = list.map(o=>`
+        <div class="card">
+          <div class="row"><strong>Order #${o.id.slice(-6)}</strong><span class="badge ${o.status}">${o.status}</span></div>
+          <div class="muted">${o.items.map(i=>`${i.name} × ${i.qty}`).join(', ')}</div>
+          <div class="row"><span>Placed</span><span>${o.createdAt?.toDate?o.createdAt.toDate().toLocaleString():''}</span></div>
+          <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
+        </div>
+      `).join('');
+    }
+
+    // Admin: export CSV
+    async function exportOrders(){
+      const snap = await db.collection('orders').orderBy('createdAt','desc').get();
+      const rows = [["OrderID","User","Total","Status","Created"]];
+      snap.docs.forEach(d=>{
+        const o=d.data();
+        rows.push([d.id,o.uid,o.total,o.status,(o.createdAt?.toDate?o.createdAt.toDate():new Date()).toISOString()]);
+      });
+      const csv = rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='orders.csv'; a.click(); URL.revokeObjectURL(url);
+      toast('Exported orders');
+    }
+
+    
+
+    /*****************
+     * Admin (Menu/Coupons/Orders)
+     *****************/
+    function switchTab(el){
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      el.classList.add('active');
+      const id = el.dataset.tab;
+      ['tab-menu','tab-coupons','tab-orders'].forEach(x=>qs('#'+x).hidden = x!==id);
+      if(id==='tab-orders') loadAdminOrders();
+      if(id==='tab-coupons') loadCoupons();
+      if(id==='tab-menu') loadMenu();
+    }
+
+    function canAdmin(){
+      return currentUser? db.collection('users').doc(currentUser.uid).get().then(s=>s.exists && s.data().role==='admin') : Promise.resolve(false);
+    }
+
+    // MENU CRUD
+    async function submitMenu(e){
+      e.preventDefault();
+      if(!await canAdmin()) return toast('Admin only','error');
+      const data = {
+        name: qs('#mName').value.trim(),
+        price: Number(qs('#mPrice').value||0),
+        category: qs('#mCategory').value,
+        description: qs('#mDesc').value.trim(),
+        image: qs('#mImage').value.trim(),
+        inStock: qs('#mInStock').value==='true',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      const id = qs('#menuEditId').value;
+      if(id){ await db.collection('menuItems').doc(id).set(data,{merge:true}); toast('Menu updated','success'); }
+      else{ await db.collection('menuItems').add(data); toast('Menu added','success'); }
+      (e.target).reset(); qs('#menuEditId').value=''; qs('#menuFormTitle').textContent='Add New Menu Item';
+      loadMenu(); renderAdminMenu();
+      return false;
+    }
+    function renderAdminMenu(){
+      const list = qs('#adminMenuList'); list.innerHTML='';
+      menu.forEach(m=>{
+        const el=document.createElement('div'); el.className='card';
+        el.innerHTML = `
+          <div class="row"><strong>${m.name}</strong><span>₹${m.price}</span></div>
+          <div class="muted">${m.category}</div>
+          <div class="row">
+            <button class="btn" onclick="editMenuItem('${m.id}')"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn" onclick="adminDeleteMenu('${m.id}')"><i class="fa-solid fa-trash"></i></button>
+          </div>`;
+        list.appendChild(el);
+      });
+    }
+    function editMenuItem(id){
+      const m = menu.find(x=>x.id===id); if(!m) return;
+      qs('#menuFormTitle').textContent='Edit Menu Item';
+      qs('#menuEditId').value=m.id;
+      qs('#mName').value=m.name||'';
+      qs('#mPrice').value=m.price||0;
+      qs('#mCategory').value=m.category||'biryani';
+      qs('#mDesc').value=m.description||'';
+      qs('#mImage').value=m.image||'';
+      qs('#mInStock').value = (m.inStock!==false).toString();
+      window.scrollTo({top:qs('#menuForm').getBoundingClientRect().top + window.scrollY - 90, behavior:'smooth'});
+    }
+    async function adminDeleteMenu(id){
+      if(!await canAdmin()) return toast('Admin only','error');
+      if(!confirm('Delete this menu item?')) return;
+      await db.collection('menuItems').doc(id).delete();
+      toast('Deleted'); loadMenu(); renderAdminMenu();
+    }
+
+    // COUPONS CRUD
+    async function submitCoupon(e){
+      e.preventDefault();
+      if(!await canAdmin()) return toast('Admin only','error');
+      const data = {
+        code: qs('#cCode').value.trim().toUpperCase(),
+        discountType: qs('#cType').value,
+        discountValue: Number(qs('#cValue').value||0),
+        minOrderValue: Number(qs('#cMin').value||0),
+        validUntil: qs('#cUntil').value ? firebase.firestore.Timestamp.fromDate(new Date(qs('#cUntil').value)) : null,
+        isActive: qs('#cActive').value==='true',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      const id = qs('#couponEditId').value;
+      if(id){ await db.collection('coupons').doc(id).set(data,{merge:true}); toast('Coupon updated','success'); }
+      else{ await db.collection('coupons').add(data); toast('Coupon added','success'); }
+      (e.target).reset(); qs('#couponEditId').value='';
+      loadCoupons(); return false;
+    }
+    function renderAdminCoupons(){
+      const list = qs('#adminCouponList'); list.innerHTML='';
+      coupons.forEach(c=>{
+        const el=document.createElement('div'); el.className='card';
+        el.innerHTML = `
+          <div class="row"><strong>${c.code}</strong><span>${c.discountType==='percentage'?c.discountValue+'%':'₹'+c.discountValue}</span></div>
+          <div class="muted">Min: ₹${c.minOrderValue||0} • Active: ${c.isActive!==false?'Yes':'No'}</div>
+          <div class="row">
+            <button class="btn" onclick="editCoupon('${c.id}')"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn" onclick="deleteCoupon('${c.id}')"><i class="fa-solid fa-trash"></i></button>
+          </div>`;
+        list.appendChild(el);
+      });
+    }
+    function editCoupon(id){
+      const c = coupons.find(x=>x.id===id); if(!c) return;
+      qs('#couponEditId').value=c.id;
+      qs('#cCode').value=c.code||'';
+      qs('#cType').value=c.discountType||'percentage';
+      qs('#cValue').value=c.discountValue||0;
+      qs('#cMin').value=c.minOrderValue||0;
+      qs('#cUntil').value = c.validUntil?.toDate? new Date(c.validUntil.toDate()).toISOString().split('T')[0] : '';
+      qs('#cActive').value = (c.isActive!==false).toString();
+    }
+    async function deleteCoupon(id){
+      if(!await canAdmin()) return toast('Admin only','error');
+      if(!confirm('Delete this coupon?')) return;
+      await db.collection('coupons').doc(id).delete();
+      toast('Deleted'); loadCoupons();
+    }
+    async function loadAdminOrders(){
+  const isAdmin = await canAdmin();
+  console.log('Is user admin?', isAdmin); // This will show you the result
+  if (!isAdmin) {
+    qs('#adminOrderList').innerHTML = '<div class="muted">You do not have admin access to view orders.</div>';
+    return;
+  }
+  
+  // The rest of your code here...
+  const snap = await db.collection('orders').orderBy('createdAt','desc').get();
+  // ... rest of the function to render orders
+}
+
+    // ADMIN ORDERS
+    async function loadAdminOrders(){
+      if(!await canAdmin()) return;
+      const snap = await db.collection('orders').orderBy('createdAt','desc').get();
+      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
+      const box = qs('#adminOrderList'); box.innerHTML='';
+      list.forEach(o=>{
+        const el=document.createElement('div'); el.className='card';
+        el.innerHTML = `
+          <div class="row"><strong>#${o.id.slice(-6)}</strong><span class="badge ${o.status}">${o.status}</span></div>
+          <div class="muted">${o.items.map(i=>`${i.name} × ${i.qty}`).join(', ')}</div>
+          <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
+          <div class="row">
+            <select id="st-${o.id}">
+              ${['pending','confirmed','preparing','ready','delivered'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
+            </select>
+            <button class="btn" onclick="updateOrderStatus('${o.id}')">Update</button>
+          </div>
+        `;
+        box.appendChild(el);
+      });
+    }
+    async function updateOrderStatus(id){
+      const v = qs('#st-'+id).value;
+      await db.collection('orders').doc(id).set({status:v},{merge:true});
+      toast('Status updated','success');
+      loadAdminOrders();
+    }
+
+    /*****************
+     * Startup
+     *****************/
+    // basic keyboard shortcuts
+    document.addEventListener('keydown',(e)=>{
+      if(e.altKey){
+        const map={1:'home',2:'menu',3:'cart',4:'orders',5:'profile',6:'admin'};
+        if(map[e.key]) navTo(map[e.key]);
+      }
+    });
+
+    // initial
+    navTo('home');
+    loadMenu().then(renderAdminMenu);
+    loadCoupons();
+
+    // keep totals updated on order type change
+    document.addEventListener('change', (e)=>{
+      if(e.target && (e.target.id==='orderType')) renderCart();
+    });
+  </script>
+</body>
+</html>
