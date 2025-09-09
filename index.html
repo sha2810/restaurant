@@ -735,24 +735,77 @@ async function requestNotificationPermission() {
     }
 
     async function loadMyOrders(){
-      if(!currentUser){ qs('#ordersList').innerHTML='<div class="muted">Login to view your orders.</div>'; return; }
-      try{const snap = await db.collection('orders').where('uid','==',currentUser.uid).orderBy('createdAt','desc').get();
-      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
-      const box = qs('#ordersList');
-      if(list.length===0) return box.innerHTML='<div class="muted">No orders yet.</div>';
-      box.innerHTML = list.map(o=>`
-        <div class="card">
-          <div class="row"><strong>Order #${o.id.slice(-6)}</strong><span class="badge ${o.status}">${o.status}</span></div>
-          <div class="muted">${o.items.map(i=>`${i.name} × ${i.qty}`).join(', ')}</div>
-          <div class="row"><span>Placed</span><span>${o.createdAt?.toDate?o.createdAt.toDate().toLocaleString():''}</span></div>
-          <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
-        </div>
-      `).join('');
-      } catch(err) {
-    console.error("Error loading orders:", err);
-    qs('#ordersList').innerHTML='<div class="muted">Error loading orders.</div>';
+  const box = qs('#ordersList');
+  box.innerHTML = '<div class="muted">Loading orders...</div>';
+
+  if(!currentUser){
+    box.innerHTML = '<div class="muted">Login to view your orders.</div>';
+    return;
   }
+
+  try {
+    // Try the preferred query (with orderBy). If it fails (index/permission), we fallback.
+    let snap;
+    try {
+      snap = await db.collection('orders')
+        .where('uid','==', currentUser.uid)
+        .orderBy('createdAt','desc')
+        .get();
+    } catch (e) {
+      console.warn('Primary orders query failed, retrying without orderBy:', e);
+      // Try fallback query without ordering (works if missing index or createdAt)
+      snap = await db.collection('orders')
+        .where('uid','==', currentUser.uid)
+        .get();
     }
+
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if(list.length === 0){
+      box.innerHTML = '<div class="muted">No orders yet.</div>';
+      return;
+    }
+
+    box.innerHTML = list.map(o => {
+      // Robust createdAt formatting (handles Timestamp, ISO string, or missing)
+      let placed = '';
+      try {
+        if (o.createdAt && o.createdAt.toDate) placed = o.createdAt.toDate().toLocaleString();
+        else if (o.createdAt) placed = new Date(o.createdAt).toLocaleString();
+      } catch (err) { placed = ''; }
+
+      const itemsText = (o.items || []).map(i => `${i.name} × ${i.qty}`).join(', ');
+      const status = o.status || 'pending';
+      const total = o.total || 0;
+
+      return `
+        <div class="card">
+          <div class="row"><strong>Order #${o.id.slice(-6)}</strong><span class="badge ${status}">${status}</span></div>
+          <div class="muted">${itemsText}</div>
+          <div class="row"><span>Placed</span><span>${placed}</span></div>
+          <div class="row"><span>Total</span><strong>₹${total}</strong></div>
+        </div>
+      `;
+    }).join('');
+
+  } catch (err) {
+    console.error('Error loading orders (detailed):', err);
+
+    // Friendly hint to the user and useful hint for you as developer
+    let help = '';
+    const msg = err && err.message ? err.message : String(err);
+    if (msg.includes('missing or insufficient permissions')) {
+      help = ' Firestore blocked the request (insufficient permissions).';
+    } else if (msg.toLowerCase().includes('index')) {
+      help = ' Firestore requires a composite index for this query; check the console error for an index link.';
+    } else if (msg.includes('permission_denied')) {
+      help = ' Permission denied by Firestore rules.';
+    }
+
+    box.innerHTML = `<div class="muted">Error loading orders.${help} (See console for details.)</div>`;
+  }
+}
+
     
 
     // Admin: export CSV
