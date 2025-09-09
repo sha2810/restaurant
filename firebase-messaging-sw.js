@@ -18,3 +18,16 @@ firebase.initializeApp(firebaseConfig);
 
 // Retrieve an instance of Firebase Messaging so that it can handle background messages.
 const messaging = firebase.messaging();
+
+// ✅ Handle background messages
+messaging.onBackgroundMessage((payload) => {
+console.log('Received background message ', payload);
+const notificationTitle = payload.notification?.title || "Oasis Restaurant";
+const notificationOptions = {
+body: payload.notification?.body || "You have a new update!",
+icon: '/icon.png' // replace with your logo path
+};
+
+
+self.registration.showNotification(notificationTitle, notificationOptions);
+});

@@ -361,21 +361,74 @@
 
   <script>
     /***************
-     * Firebase Init
-     ***************/
-    const firebaseConfig = {
-      apiKey: "AIzaSyA2oIAkYwBQeCkP88wJopoKC8ULgID043E",
-      authDomain: "restaurent-8bce8.firebaseapp.com",
-      projectId: "restaurent-8bce8",
-      storageBucket: "restaurent-8bce8.firebasestorage.app",
-      messagingSenderId: "210383076768",
-      appId: "1:210383076768:web:1ed82e9ec330b76beb78c5",
-      measurementId: "G-K69EFNCRG1"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db   = firebase.firestore();
-    const storage = firebase.storage();
+* Firebase Init
+***************/
+const firebaseConfig = {
+apiKey: "AIzaSyA2oIAkYwBQeCkP88wJopoKC8ULgID043E",
+authDomain: "restaurent-8bce8.firebaseapp.com",
+projectId: "restaurent-8bce8",
+storageBucket: "restaurent-8bce8.firebasestorage.app",
+messagingSenderId: "210383076768",
+appId: "1:210383076768:web:1ed82e9ec330b76beb78c5",
+measurementId: "G-K69EFNCRG1"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
+const messaging = firebase.messaging(); // ✅ added
+
+
+/*****************
+* Notifications
+*****************/
+async function requestNotificationPermission() {
+try {
+const permission = await Notification.requestPermission();
+if (permission === 'granted') {
+console.log('Notification permission granted.');
+const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+console.log('Service Worker registered with scope:', registration.scope);
+
+
+const token = await messaging.getToken({ serviceWorkerRegistration: registration });
+console.log('FCM token:', token);
+
+
+if (currentUser) {
+await db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
+}
+} else {
+console.log('Notification permission denied.');
+}
+} catch (err) {
+console.error('Unable to get permission or token:', err);
+toast('Error getting permission or token','error');
+}
+}
+
+
+// Foreground listener ✅
+messaging.onMessage((payload) => {
+console.log('Message received in foreground: ', payload);
+toast(payload.notification?.title || "New notification");
+});
+
+
+// Re-fetch token when app loads or user logs in
+async function updateFcmToken() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const newToken = await messaging.getToken({ serviceWorkerRegistration: registration });
+    console.log('FCM Token:', newToken);
+    if (currentUser && newToken) {
+      await db.collection('users').doc(currentUser.uid).set({ fcmToken: newToken }, { merge: true });
+    }
+  } catch (err) {
+    console.error('Error fetching FCM token:', err);
+  }
+}
+
 
     /*****************
      * App State
@@ -683,7 +736,7 @@ async function requestNotificationPermission() {
 
     async function loadMyOrders(){
       if(!currentUser){ qs('#ordersList').innerHTML='<div class="muted">Login to view your orders.</div>'; return; }
-      const snap = await db.collection('orders').where('uid','==',currentUser.uid).orderBy('createdAt','desc').get();
+      try{const snap = await db.collection('orders').where('uid','==',currentUser.uid).orderBy('createdAt','desc').get();
       const list = snap.docs.map(d=>({id:d.id,...d.data()}));
       const box = qs('#ordersList');
       if(list.length===0) return box.innerHTML='<div class="muted">No orders yet.</div>';
@@ -695,6 +748,10 @@ async function requestNotificationPermission() {
           <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
         </div>
       `).join('');
+      } catch(err) {
+    console.error("Error loading orders:", err);
+    qs('#ordersList').innerHTML='<div class="muted">Error loading orders.</div>';
+  }
     }
     
 
