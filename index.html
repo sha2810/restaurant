@@ -36,12 +36,7 @@
     .nav-menu li:hover{background:var(--primary-gold);color:var(--dark-brown)}
     .right{display:flex;align-items:center;gap:12px}
     .btn{border:1px solid #ffffff3a;background:transparent;color:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
-    /* Add this to your style block */
-.card .btn, .modal .btn {
-  background: #f1f5f9; /* A light gray background */
-  border-color: #e2e8f0;
-  color: var(--text); /* Set text color to be visible */
-}
+    .card .btn, .modal .btn { background: #f1f5f9; border-color: #e2e8f0; color: var(--text); }
     .btn.primary{background:var(--primary-gold);border-color:var(--primary-gold);color:#151515}
     .cart-pill{position:relative;cursor:pointer}
     .cart-pill .count{position:absolute;top:-6px;right:-8px;background:#ff4757;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px}
@@ -111,10 +106,31 @@
 
     /* Modals */
     .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.35);z-index:70}
-    .modal .card{max-width:420px;width:92%}
+    .modal .card{max-width:420px; width:92%}
     .x{cursor:pointer}
     input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
     label{font-size:13px;color:#475569}
+
+    /* Theme classes */
+    .theme-dark {
+      --primary-gold: #FFD700;
+      --secondary-gold: #B8860B;
+      --dark-brown: #0f172a;
+      --cream: #111827;
+      --text: #e5e7eb;
+      --light: #1f2937;
+      --border: #374151;
+      background: #0f172a !important;
+      color: var(--text);
+    }
+    .theme-dark header { background: linear-gradient(135deg,#111827,#1f2937); }
+    .theme-dark .card { background:#1f2937; color:var(--text); border-color:#374151; }
+    .theme-dark .btn { background:#374151; color:#fff; }
+    /* Narrow print for thermal */
+    @media print {
+      @page { margin: 6mm; size: auto; }
+      body.print-thermal { width: 280px; }
+    }
   </style>
 </head>
 <body>
@@ -149,6 +165,8 @@
       <div class="right">
         <div class="burger" onclick="toggleDrawer()"><i class="fa-solid fa-bars"></i></div>
         <div class="cart-pill" onclick="navTo('cart')"><i class="fa-solid fa-cart-shopping"></i><span id="cartCount" class="count">0</span></div>
+
+        <button id="darkModeToggle" class="btn" onclick="toggleDarkMode()">🌙</button>
 
         <div id="authBtns">
           <button class="btn" onclick="openModal('loginModal')">Login</button>
@@ -189,6 +207,11 @@
         <button class="chip" data-cat="appetizers" onclick="filterMenu('appetizers', this)">Appetizers</button>
         <button class="chip" data-cat="desserts" onclick="filterMenu('desserts', this)">Desserts</button>
         <button class="chip" data-cat="beverages" onclick="filterMenu('beverages', this)">Beverages</button>
+      </div>
+
+      <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+        <input id="menuSearch" placeholder="Search menu..." style="padding:8px;border-radius:8px;border:1px solid var(--border)" oninput="searchMenu()" />
+        <button class="btn" onclick="loadMenu()">Refresh</button>
       </div>
 
       <div id="menuGrid" class="menu-grid"></div>
@@ -263,12 +286,24 @@
       <h2 class="title">Admin Panel</h2>
 
       <div class="tabs">
-        <div class="tab active" data-tab="tab-menu" onclick="switchTab(this)">Menu</div>
+        <div class="tab active" data-tab="tab-dashboard" onclick="switchTab(this)">Dashboard</div>
+        <div class="tab" data-tab="tab-menu" onclick="switchTab(this)">Menu</div>
         <div class="tab" data-tab="tab-coupons" onclick="switchTab(this)">Coupons</div>
         <div class="tab" data-tab="tab-orders" onclick="switchTab(this)">Orders</div>
       </div>
 
-      <div id="tab-menu" class="admin-grid">
+      <div id="tab-dashboard" class="admin-grid">
+        <div class="card"><h3>Total Orders</h3><div id="dashOrders">0</div></div>
+        <div class="card"><h3>Total Sales</h3><div id="dashSales">₹0</div></div>
+        <div class="card"><h3>Today’s Orders</h3><div id="dashTodayOrders">0</div></div>
+        <div class="card"><h3>Today’s Sales</h3><div id="dashTodaySales">₹0</div></div>
+        <div class="card" style="grid-column:1/-1">
+          <h3>Most Popular Items</h3>
+          <div id="dashPopular"></div>
+        </div>
+      </div>
+
+      <div id="tab-menu" class="admin-grid" hidden>
         <div class="card">
           <h3 style="margin-top:0" id="menuFormTitle">Add New Menu Item</h3>
           <form id="menuForm" onsubmit="return submitMenu(event)">
@@ -284,6 +319,11 @@
             <label>Emoji / Image (emoji or URL)</label><input id="mImage" placeholder="🍛 or https://..." />
             <label>In Stock</label>
             <select id="mInStock"><option value="true">Yes</option><option value="false">No</option></select>
+
+            <!-- New inventory fields -->
+            <label>Stock Count</label><input id="mStockCount" type="number" min="0" value="0" />
+            <label>Low Threshold</label><input id="mLowThreshold" type="number" min="0" value="5" />
+
             <button class="cta full" style="margin-top:10px" type="submit">Save</button>
           </form>
         </div>
@@ -361,8 +401,8 @@
 
   <script>
     /***************
-* Firebase Init
-***************/
+    * Firebase Init
+    ***************/
 const firebaseConfig = {
 apiKey: "AIzaSyA2oIAkYwBQeCkP88wJopoKC8ULgID043E",
 authDomain: "restaurent-8bce8.firebaseapp.com",
@@ -376,46 +416,38 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
-const messaging = firebase.messaging(); // ✅ added
-
+const messaging = firebase.messaging(); // ✅
 
 /*****************
 * Notifications
 *****************/
 async function requestNotificationPermission() {
-try {
-const permission = await Notification.requestPermission();
-if (permission === 'granted') {
-console.log('Notification permission granted.');
-const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-console.log('Service Worker registered with scope:', registration.scope);
-
-
-const token = await messaging.getToken({ serviceWorkerRegistration: registration });
-console.log('FCM token:', token);
-
-
-if (currentUser) {
-await db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
-}
-} else {
-console.log('Notification permission denied.');
-}
-} catch (err) {
-console.error('Unable to get permission or token:', err);
-toast('Error getting permission or token','error');
-}
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      console.log('Notification permission granted.');
+      const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+      console.log('Service Worker registered with scope:', registration.scope);
+      const token = await messaging.getToken({ serviceWorkerRegistration: registration });
+      console.log('FCM token:', token);
+      if (currentUser && token) {
+        await db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
+      }
+    } else {
+      console.log('Notification permission denied.');
+    }
+  } catch (err) {
+    console.error('Unable to get permission or token:', err);
+    toast('Error getting permission or token','error');
+  }
 }
 
-
-// Foreground listener ✅
+// Foreground listener
 messaging.onMessage((payload) => {
-console.log('Message received in foreground: ', payload);
-toast(payload.notification?.title || "New notification");
+  console.log('Message received in foreground: ', payload);
+  toast(payload.notification?.title || "New notification");
 });
 
-
-// Re-fetch token when app loads or user logs in
 async function updateFcmToken() {
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -428,7 +460,6 @@ async function updateFcmToken() {
     console.error('Error fetching FCM token:', err);
   }
 }
-
 
     /*****************
      * App State
@@ -452,9 +483,6 @@ document.addEventListener("click", () => {
   if (menu) menu.style.display = "none";
 });
 
-
-
-
     /*****************
      * Utilities / UI
      *****************/
@@ -472,7 +500,7 @@ document.addEventListener("click", () => {
       document.querySelectorAll('section.section, .hero').forEach(s=>s.hidden=true);
       if(id==='home'){qs('.hero').hidden=false}else{qs('#'+id).hidden=false}
       if(window.innerWidth<=820){toggleDrawer(false)}
-      if(id==='menu'){loadMenu()} 
+      if(id==='menu'){loadMenu()}
       if(id==='orders'){loadMyOrders()}
     }
     function toggleDrawer(force){
@@ -483,9 +511,26 @@ document.addEventListener("click", () => {
     function closeModal(id){qs('#'+id).style.display='none'}
 
     /*****************
+     * Theme / Dark Mode
+     *****************/
+function toggleDarkMode() {
+  const root = document.documentElement;
+  const isDark = root.classList.toggle("theme-dark");
+  localStorage.setItem("theme", isDark ? "dark" : "light");
+  if (currentUser) {
+    db.collection("users").doc(currentUser.uid).set({ theme: isDark ? "dark" : "light" }, { merge: true }).catch(()=>{});
+  }
+}
+function loadTheme(){
+  const saved = localStorage.getItem("theme");
+  if(saved === "dark") document.documentElement.classList.add("theme-dark");
+}
+loadTheme();
+
+    /*****************
      * Auth
      *****************/
-    auth.onAuthStateChanged(async (user)=>{
+    auth.onAuthStateChanged(async (user)=> {
       currentUser = user || null;
       if(user){
         qs('#authBtns').style.display='none';
@@ -507,6 +552,13 @@ document.addEventListener("click", () => {
         const isAdmin = doc.role === 'admin';
         qs('#adminLink').style.display = isAdmin ? '' : 'none';
         qs('#adminLinkDrawer').style.display = isAdmin ? '' : 'none';
+        // load user's theme preference if exists
+        if(doc.theme) {
+          localStorage.setItem('theme', doc.theme);
+          if(doc.theme === 'dark') document.documentElement.classList.add('theme-dark');
+        }
+        // register token/update
+        updateFcmToken().catch(()=>{});
       }else{
         qs('#authBtns').style.display='';
         qs('#profileBox').style.display='none';
@@ -557,35 +609,6 @@ document.addEventListener("click", () => {
       qs('#profileName').textContent = name || 'User';
     }
 
-// Place this code inside your <script> tag in index.html
-async function requestNotificationPermission() {
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      console.log('Notification permission granted.');
-
-      // Manually register the service worker and wait for it
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      console.log('Service Worker registered with scope:', registration.scope);
-
-      // Get the FCM token, explicitly passing the service worker registration
-      const token = await messaging.getToken({ serviceWorkerRegistration: registration });
-      console.log('FCM token:', token);
-
-      // Save this token to the user's document in Firestore
-      if (currentUser) {
-        await db.collection('users').doc(currentUser.uid).set({ fcmToken: token }, { merge: true });
-      }
-
-    } else {
-      console.log('Notification permission denied.');
-    }
-  } catch (err) {
-    console.error('Unable to get permission or token:', err);
-    toast('Error getting permission or token','error');
-  }
-}
-
     /*****************
      * Menu (Firestore)
      *****************/
@@ -593,6 +616,8 @@ async function requestNotificationPermission() {
       const grid = qs('#menuGrid');
       grid.innerHTML = '';
       items.forEach(it=>{
+        const outOfStock = (it.inStock===false) || (typeof it.stockCount === 'number' && it.stockCount <= 0);
+        const stockText = (typeof it.stockCount === 'number') ? `Stock: ${it.stockCount}` : '';
         const card = document.createElement('div');
         card.className='card food';
         card.innerHTML = `
@@ -603,12 +628,13 @@ async function requestNotificationPermission() {
               <span>₹${Number(it.price||0)}</span>
             </div>
             <div class="muted" style="margin:6px 0">${it.description||''}</div>
+            <div class="muted">${stockText}</div>
             <div class="qty">
               <button onclick="chgQty('${it.id}',-1)">–</button>
               <span id="q-${it.id}">1</span>
               <button onclick="chgQty('${it.id}',1)">+</button>
-              <button class="btn" style="margin-left:auto" ${it.inStock===false?'disabled':''} onclick="addToCart('${it.id}')">
-                <i class="fa-solid fa-plus"></i> Add
+              <button class="btn" style="margin-left:auto" ${outOfStock ? 'disabled' : ''} onclick="addToCart('${it.id}')">
+                <i class="fa-solid fa-plus"></i> ${outOfStock ? 'Out' : 'Add'}
               </button>
             </div>
           </div>`;
@@ -621,6 +647,7 @@ async function requestNotificationPermission() {
       const snap = await db.collection('menuItems').orderBy('createdAt','desc').get();
       menu = snap.docs.map(d=>({id:d.id, ...d.data()}));
       renderMenu(menu);
+      renderAdminMenu();
     }
     function filterMenu(cat, el){
       document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
@@ -633,6 +660,13 @@ async function requestNotificationPermission() {
       const el = qs('#q-'+id);
       const val = Math.max(1, (parseInt(el.textContent)||1)+delta);
       el.textContent = val;
+    }
+    function searchMenu(){
+      const q = qs('#menuSearch').value.trim().toLowerCase();
+      document.querySelectorAll('#menuGrid .card').forEach(c=>{
+        const txt = c.innerText.toLowerCase();
+        c.style.display = txt.includes(q) ? 'flex' : 'none';
+      });
     }
 
     /*****************
@@ -667,6 +701,15 @@ async function requestNotificationPermission() {
       qs('#discountAmt').textContent = '-₹'+discount;
       qs('#grandTotal').textContent = '₹'+total;
       updateCartBadge();
+      // persist locally
+      localStorage.setItem('oasis_cart', JSON.stringify(cart));
+    }
+    function loadCartFromStorage(){
+      try{
+        const raw = localStorage.getItem('oasis_cart');
+        if(raw) cart = JSON.parse(raw);
+      }catch(e){ cart = []; }
+      renderCart();
     }
     function addToCart(menuId){
       const item = menu.find(m=>m.id===menuId);
@@ -697,7 +740,7 @@ async function requestNotificationPermission() {
     }
 
     /*****************
-     * Orders
+     * Orders (customer)
      *****************/
     async function placeOrder(){
       if(cart.length===0) return toast('Your cart is empty','error');
@@ -722,7 +765,12 @@ async function requestNotificationPermission() {
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
 
+      // write order
       const ref = await db.collection('orders').add(order);
+
+      // deduct stock (best-effort, client-side)
+      deductStockForOrder(ref.id, order).catch(e=>console.error('stock deduct failed',e));
+
       // loyalty: 1 point per ₹10
       const points = Math.floor(total/10);
       loyaltyPoints += points;
@@ -735,78 +783,102 @@ async function requestNotificationPermission() {
     }
 
     async function loadMyOrders(){
-  const box = qs('#ordersList');
-  box.innerHTML = '<div class="muted">Loading orders...</div>';
+      const box = qs('#ordersList');
+      box.innerHTML = '<div class="muted">Loading orders...</div>';
 
-  if(!currentUser){
-    box.innerHTML = '<div class="muted">Login to view your orders.</div>';
-    return;
-  }
+      if(!currentUser){
+        box.innerHTML = '<div class="muted">Login to view your orders.</div>';
+        return;
+      }
 
-  try {
-    // Try the preferred query (with orderBy). If it fails (index/permission), we fallback.
-    let snap;
-    try {
-      snap = await db.collection('orders')
-        .where('uid','==', currentUser.uid)
-        .orderBy('createdAt','desc')
-        .get();
-    } catch (e) {
-      console.warn('Primary orders query failed, retrying without orderBy:', e);
-      // Try fallback query without ordering (works if missing index or createdAt)
-      snap = await db.collection('orders')
-        .where('uid','==', currentUser.uid)
-        .get();
+      try {
+        let snap;
+        try {
+          snap = await db.collection('orders')
+            .where('uid','==', currentUser.uid)
+            .orderBy('createdAt','desc')
+            .get();
+        } catch (e) {
+          snap = await db.collection('orders')
+            .where('uid','==', currentUser.uid)
+            .get();
+        }
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        if(list.length === 0){
+          box.innerHTML = '<div class="muted">No orders yet.</div>';
+          return;
+        }
+
+        box.innerHTML = list.map(o => renderOrderForCustomerCard(o)).join('');
+        // Start countdown timers where ETA exists
+        list.forEach(o => { if(o.etaMinutes && o.etaSetAt) startEtaCountdown(o.id, o.etaMinutes, o.etaSetAt.toDate ? o.etaSetAt.toDate() : new Date(o.etaSetAt)); });
+      } catch (err) {
+        console.error('Error loading orders (detailed):', err);
+        box.innerHTML = '<div class="muted">Error loading orders. See console.</div>';
+      }
     }
 
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    if(list.length === 0){
-      box.innerHTML = '<div class="muted">No orders yet.</div>';
-      return;
-    }
-
-    box.innerHTML = list.map(o => {
-      // Robust createdAt formatting (handles Timestamp, ISO string, or missing)
+    function renderOrderForCustomerCard(o) {
       let placed = '';
       try {
         if (o.createdAt && o.createdAt.toDate) placed = o.createdAt.toDate().toLocaleString();
         else if (o.createdAt) placed = new Date(o.createdAt).toLocaleString();
       } catch (err) { placed = ''; }
-
       const itemsText = (o.items || []).map(i => `${i.name} × ${i.qty}`).join(', ');
+      const etaMinutes = o.etaMinutes || null;
+      const etaSetAt = o.etaSetAt ? (o.etaSetAt.toDate ? o.etaSetAt.toDate() : new Date(o.etaSetAt)) : null;
+      const idShort = o.id ? o.id.slice(-6) : 'xxxxx';
       const status = o.status || 'pending';
       const total = o.total || 0;
-
       return `
-        <div class="card">
-          <div class="row"><strong>Order #${o.id.slice(-6)}</strong><span class="badge ${status}">${status}</span></div>
+        <div class="card" id="cust-order-${o.id}">
+          <div class="row"><strong>Order #${idShort}</strong><span class="badge ${status}">${status}</span></div>
           <div class="muted">${itemsText}</div>
           <div class="row"><span>Placed</span><span>${placed}</span></div>
+          <div class="row"><span>ETA</span><span id="eta-${o.id}">${etaMinutes ? etaMinutes+' min' : '—'}</span></div>
           <div class="row"><span>Total</span><strong>₹${total}</strong></div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn" onclick="printInvoice('${o.id}')">Print Invoice</button>
+          </div>
         </div>
       `;
-    }).join('');
-
-  } catch (err) {
-    console.error('Error loading orders (detailed):', err);
-
-    // Friendly hint to the user and useful hint for you as developer
-    let help = '';
-    const msg = err && err.message ? err.message : String(err);
-    if (msg.includes('missing or insufficient permissions')) {
-      help = ' Firestore blocked the request (insufficient permissions).';
-    } else if (msg.toLowerCase().includes('index')) {
-      help = ' Firestore requires a composite index for this query; check the console error for an index link.';
-    } else if (msg.includes('permission_denied')) {
-      help = ' Permission denied by Firestore rules.';
     }
 
-    box.innerHTML = `<div class="muted">Error loading orders.${help} (See console for details.)</div>`;
-  }
-}
+    function startEtaCountdown(orderId, minutes, etaSetAtDate) {
+      const etaEl = qs('#eta-'+orderId);
+      if(!etaEl) return;
+      const end = new Date(etaSetAtDate.getTime() + (minutes*60*1000));
+      function tick(){
+        const now = new Date();
+        const diff = end - now;
+        if(diff <= 0){
+          etaEl.textContent = 'Arriving soon';
+          clearInterval(tid);
+          return;
+        }
+        const mm = Math.floor(diff/60000);
+        const ss = Math.floor((diff%60000)/1000);
+        etaEl.textContent = `${mm}m ${ss}s`;
+      }
+      tick();
+      const tid = setInterval(tick,1000);
+    }
 
-    
+    /*****************
+     * Admin helpers
+     *****************/
+    async function canAdmin(){
+      try {
+        const user = auth.currentUser;
+        if (!user) return false;
+        const doc = await db.collection('users').doc(user.uid).get();
+        return doc.exists && doc.data().role === "admin";
+      } catch (e) {
+        console.error("Error checking admin status:", e);
+        return false;
+      }
+    }
 
     // Admin: export CSV
     async function exportOrders(){
@@ -823,8 +895,6 @@ async function requestNotificationPermission() {
       toast('Exported orders');
     }
 
-    
-
     /*****************
      * Admin (Menu/Coupons/Orders)
      *****************/
@@ -832,30 +902,41 @@ async function requestNotificationPermission() {
       document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
       el.classList.add('active');
       const id = el.dataset.tab;
-      ['tab-menu','tab-coupons','tab-orders'].forEach(x=>qs('#'+x).hidden = x!==id);
+      ['tab-dashboard','tab-menu','tab-coupons','tab-orders'].forEach(x=>qs('#'+x).hidden = x!==id);
       if(id==='tab-orders') loadAdminOrders();
       if(id==='tab-coupons') loadCoupons();
       if(id==='tab-menu') loadMenu();
+      if(id==='tab-dashboard') loadDashboard();
     }
 
-async function canAdmin(){
-  try {
-    const user = auth.currentUser;
-    if (!user) return false;
+    async function loadDashboard(){
+      if(!await canAdmin()) {
+        qs('#tab-dashboard').innerHTML = '<div class="muted">Admin access only.</div>';
+        return;
+      }
+      const snap = await db.collection('orders').get();
+      const orders = snap.docs.map(d=>d.data());
+      const totalOrders = orders.length;
+      const totalSales = orders.reduce((s,o)=>s+(o.total||0),0);
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todayOrders = orders.filter(o=>o.createdAt?.toDate && o.createdAt.toDate() >= today);
+      const todayCount = todayOrders.length;
+      const todaySales = todayOrders.reduce((s,o)=>s+(o.total||0),0);
+      const freq = {};
+      orders.forEach(o=>{
+        (o.items||[]).forEach(i=>{
+          freq[i.name] = (freq[i.name]||0) + i.qty;
+        });
+      });
+      const popular = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      qs('#dashOrders').textContent = totalOrders;
+      qs('#dashSales').textContent = '₹'+totalSales;
+      qs('#dashTodayOrders').textContent = todayCount;
+      qs('#dashTodaySales').textContent = '₹'+todaySales;
+      qs('#dashPopular').innerHTML = popular.length ? popular.map(([name,count])=>`<div>${name}: ${count}</div>`).join('') : '<div class="muted">No data yet.</div>';
+    }
 
-    // Get the user's document
-    const doc = await db.collection('users').doc(user.uid).get();
-    
-    // Return true if the role is 'admin', otherwise false
-    return doc.exists && doc.data().role === "admin";
-  } catch (e) {
-    console.error("Error checking admin status:", e);
-    return false;
-  }
-}
-
-
-    // MENU CRUD
+    // MENU CRUD (extended for stock)
     async function submitMenu(e){
       e.preventDefault();
       if(!await canAdmin()) return toast('Admin only','error');
@@ -866,6 +947,9 @@ async function canAdmin(){
         description: qs('#mDesc').value.trim(),
         image: qs('#mImage').value.trim(),
         inStock: qs('#mInStock').value==='true',
+        // NEW fields
+        stockCount: Number(qs('#mStockCount')?.value || 0),
+        lowThreshold: Number(qs('#mLowThreshold')?.value || 5),
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       const id = qs('#menuEditId').value;
@@ -878,11 +962,13 @@ async function canAdmin(){
     function renderAdminMenu(){
       const list = qs('#adminMenuList'); list.innerHTML='';
       menu.forEach(m=>{
+        const low = (m.stockCount !== undefined && m.lowThreshold !== undefined && m.stockCount <= m.lowThreshold);
         const el=document.createElement('div'); el.className='card';
         el.innerHTML = `
           <div class="row"><strong>${m.name}</strong><span>₹${m.price}</span></div>
           <div class="muted">${m.category}</div>
-          <div class="row">
+          <div class="muted">Stock: ${m.stockCount ?? '—'} • Alert@ ${m.lowThreshold ?? '—'}</div>
+          <div class="row" style="${low ? 'border-left:4px solid #DC143C;padding-left:8px' : ''}">
             <button class="btn" onclick="editMenuItem('${m.id}')"><i class="fa-solid fa-pen"></i></button>
             <button class="btn" onclick="adminDeleteMenu('${m.id}')"><i class="fa-solid fa-trash"></i></button>
           </div>`;
@@ -899,6 +985,8 @@ async function canAdmin(){
       qs('#mDesc').value=m.description||'';
       qs('#mImage').value=m.image||'';
       qs('#mInStock').value = (m.inStock!==false).toString();
+      qs('#mStockCount').value = m.stockCount ?? 0;
+      qs('#mLowThreshold').value = m.lowThreshold ?? 5;
       window.scrollTo({top:qs('#menuForm').getBoundingClientRect().top + window.scrollY - 90, behavior:'smooth'});
     }
     async function adminDeleteMenu(id){
@@ -957,28 +1045,15 @@ async function canAdmin(){
       await db.collection('coupons').doc(id).delete();
       toast('Deleted'); loadCoupons();
     }
-    async function loadAdminOrders(){
-  const isAdmin = await canAdmin();
-  console.log('Is user admin?', isAdmin); // This will show you the result
-  if (!isAdmin) {
-    qs('#adminOrderList').innerHTML = '<div class="muted">You do not have admin access to view orders.</div>';
-    return;
-  }
-  
-  // The rest of your code here...
-  const snap = await db.collection('orders').orderBy('createdAt','desc').get();
-  // ... rest of the function to render orders
-}
 
-    // ADMIN ORDERS
+    /*****************
+     * Admin Orders (with ETA and notes)
+     *****************/
 async function loadAdminOrders(){
-  // Await the canAdmin() call
   if(!await canAdmin()) {
     qs('#adminOrderList').innerHTML = '<div class="muted">You do not have admin access to view orders.</div>';
     return;
   }
-
-  // The rest of your code to render orders
   const snap = await db.collection('orders').orderBy('createdAt','desc').get();
   let orders = snap.docs.map(d=>({...d.data(),id:d.id}));
   if(orders.length===0){
@@ -989,32 +1064,134 @@ async function loadAdminOrders(){
   box.innerHTML = '';
   orders.forEach(o=>{
     let el = document.createElement('div');
-    el.className = 'order-card';
+    el.className = 'card';
+    const idShort = o.id.slice(-6);
     el.innerHTML = `
-      <div class="row"><span>Order #...</span><strong>#${o.id.slice(-6)}</strong><span class="badge ${o.status}">${o.status}</span></div>
+      <div class="row"><strong>Order #${idShort}</strong><span class="badge ${o.status}">${o.status}</span></div>
       <div class="muted">${o.items.map(i=>`${i.name} × ${i.qty}`).join(', ')}</div>
       <div class="row"><span>Total</span><strong>₹${o.total}</strong></div>
-      <div class="row">
+
+      <div style="margin-top:8px">
+        <label>ETA (minutes)</label>
+        <input id="eta-inp-${o.id}" type="number" min="0" value="${o.etaMinutes||0}" />
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Admin notes (private)</label>
+        <textarea id="note-inp-${o.id}" rows="2">${o.adminNotes||''}</textarea>
+      </div>
+
+      <div class="row" style="margin-top:8px">
         <select id="st-${o.id}">
           ${['pending','confirmed','preparing','ready','delivered'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}
         </select>
-        <button class="btn" onclick="updateOrderStatus('${o.id}')">Update</button>
+        <button class="btn" onclick="adminUpdateOrder('${o.id}')">Update</button>
+        <button class="btn" onclick="printInvoice('${o.id}')">Print Invoice</button>
       </div>
     `;
     box.appendChild(el);
   });
 }
-    async function updateOrderStatus(id){
-      const v = qs('#st-'+id).value;
-      await db.collection('orders').doc(id).set({status:v},{merge:true});
-      toast('Status updated','success');
-      loadAdminOrders();
+async function adminUpdateOrder(id){
+  if(!await canAdmin()) return toast('Admin only','error');
+  const status = qs('#st-'+id).value;
+  const etaMinutes = parseInt(qs('#eta-inp-'+id).value || '0',10);
+  const adminNotes = qs('#note-inp-'+id).value || '';
+
+  const update = { status, adminNotes };
+  if(etaMinutes > 0) {
+    update.etaMinutes = etaMinutes;
+    update.etaSetAt = firebase.firestore.FieldValue.serverTimestamp();
+  } else {
+    update.etaMinutes = firebase.firestore.FieldValue.delete();
+    update.etaSetAt = firebase.firestore.FieldValue.delete();
+  }
+  await db.collection('orders').doc(id).set(update, { merge:true });
+  toast('Order updated','success');
+
+  await db.collection('orders').doc(id).collection('activity').add({actor:auth.currentUser?.uid||'admin',status,etaMinutes,ts:firebase.firestore.FieldValue.serverTimestamp()});
+  loadAdminOrders();
+}
+
+    /*****************
+     * Inventory: deduct stock & alerts
+     *****************/
+async function deductStockForOrder(orderRefId, orderData){
+  try {
+    for(const it of orderData.items){
+      const docRef = db.collection('menuItems').doc(it.id);
+      const snap = await docRef.get();
+      if(!snap.exists) continue;
+      const cur = snap.data();
+      const newCount = (Number(cur.stockCount||0) - Number(it.qty));
+      await docRef.set({ stockCount: Math.max(0,newCount) }, { merge:true });
+      if(newCount <= (cur.lowThreshold || 0)){
+        await db.collection('alerts').add({type:'low-stock', itemId:it.id, left:newCount, ts: firebase.firestore.FieldValue.serverTimestamp()});
+      }
     }
+  } catch(e){
+    console.error('Error deducting stock',e);
+  }
+}
+
+    /*****************
+     * Print invoice (thermal-friendly)
+     *****************/
+async function printInvoice(orderId){
+  try {
+    const doc = await db.collection('orders').doc(orderId).get();
+    if(!doc.exists) return toast('Order not found','error');
+    const o = { id: doc.id, ...doc.data() };
+    const shop = "Oasis Restaurant";
+    const date = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
+    const itemsHtml = (o.items||[]).map(i=>`<div style="display:flex;justify-content:space-between"><div>${escapeHtml(i.name)} x${i.qty}</div><div>₹${i.price*i.qty}</div></div>`).join('');
+    const discount = o.discount || 0;
+    const delivery = o.deliveryFee || 0;
+    const total = o.total || 0;
+    const payment = o.paymentMethod || '—';
+    const invoiceHtml = `
+      <html>
+      <head>
+        <title>Invoice ${o.id.slice(-6)}</title>
+        <style>
+          @media print {
+            @page { margin: 6mm; size: auto; }
+          }
+          body{font-family: monospace; padding:6px; width:280px; margin:0}
+          h2{margin:0 0 6px 0; text-align:center}
+          .muted{color:#777; font-size:12px}
+          .divider{border-top:1px dashed #000;margin:8px 0}
+        </style>
+      </head>
+      <body>
+        <h2>${shop}</h2>
+        <div style="text-align:center" class="muted">${date}</div>
+        <div class="divider"></div>
+        ${itemsHtml}
+        <div class="divider"></div>
+        <div style="display:flex;justify-content:space-between"><div>Delivery</div><div>₹${delivery}</div></div>
+        <div style="display:flex;justify-content:space-between"><div>Discount</div><div>-₹${discount}</div></div>
+        <div style="display:flex;justify-content:space-between;font-weight:bold"><div>Total</div><div>₹${total}</div></div>
+        <div class="divider"></div>
+        <div>Payment: ${payment}</div>
+        <div style="text-align:center;margin-top:12px" class="muted">Thanks! Visit again.</div>
+      </body>
+      </html>
+    `;
+    const w = window.open('','_blank','width=340,height=600');
+    w.document.open();
+    w.document.write(invoiceHtml);
+    w.document.close();
+    setTimeout(()=>{ w.print(); }, 400);
+  } catch (e){
+    console.error(e); toast('Unable to print','error');
+  }
+}
+function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     /*****************
      * Startup
      *****************/
-    // basic keyboard shortcuts
     document.addEventListener('keydown',(e)=>{
       if(e.altKey){
         const map={1:'home',2:'menu',3:'cart',4:'orders',5:'profile',6:'admin'};
@@ -1024,9 +1201,7 @@ async function loadAdminOrders(){
 
     // initial
     navTo('home');
-    loadMenu().then(renderAdminMenu);
-    loadCoupons();
-
+    loadMenu().then(()=>{ renderAdminMenu(); loadCoupons(); loadCartFromStorage(); });
     // keep totals updated on order type change
     document.addEventListener('change', (e)=>{
       if(e.target && (e.target.id==='orderType')) renderCart();
